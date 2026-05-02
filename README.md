@@ -127,7 +127,7 @@ android/app/src/main/
 
 ## License
 
-MIT — use it, modify it, build on it. Just don't strip the credit.
+AGPL v3.0 — use it, modify it, build on it. See the [LICENSE](LICENSE) file for more details. Just don't strip the credit.
 
 ---
 
