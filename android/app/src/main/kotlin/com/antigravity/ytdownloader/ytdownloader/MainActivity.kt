@@ -88,6 +88,8 @@ class MainActivity : FlutterActivity() {
                                     request.addOption("-x")
                                     request.addOption("--audio-format", "mp3")
                                     request.addOption("--audio-quality", "0")
+                                } else {
+                                    request.addOption("--merge-output-format", "mp4")
                                 }
                                 
                                 val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)

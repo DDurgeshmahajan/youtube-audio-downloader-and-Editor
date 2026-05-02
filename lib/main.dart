@@ -230,16 +230,44 @@ class _DownloadOverlayState extends State<DownloadOverlay> with SingleTickerProv
           builder: (context) => AlertDialog(
             backgroundColor: const Color(0xFF1E1E2C),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-            title: const Row(
+            title: Row(
               children: [
-                Icon(Icons.check_circle, color: Colors.greenAccent, size: 28),
-                SizedBox(width: 12),
-                Text("Saved Successfully!", style: TextStyle(color: Colors.white)),
+                TweenAnimationBuilder<double>(
+                  tween: Tween<double>(begin: 0.0, end: 1.0),
+                  duration: const Duration(milliseconds: 800),
+                  curve: Curves.elasticOut,
+                  builder: (context, value, child) {
+                    return Transform.scale(
+                      scale: value,
+                      child: const Icon(Icons.check_circle, color: Colors.greenAccent, size: 36),
+                    );
+                  },
+                ),
+                const SizedBox(width: 12),
+                const Text("Saved Successfully!", style: TextStyle(color: Colors.white)),
               ],
             ),
-            content: Text(
-              "Your file has been saved to your gallery and downloads folder.\n\nPath:\n$savedPath",
-              style: const TextStyle(color: Colors.white70),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  "Your file has been saved to your gallery and downloads folder.",
+                  style: TextStyle(color: Colors.white70),
+                ),
+                const SizedBox(height: 16),
+                const Text("Path:", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 4),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  width: double.maxFinite,
+                  decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(8)),
+                  child: SelectableText(
+                    savedPath,
+                    style: const TextStyle(color: Colors.greenAccent, fontSize: 13),
+                  ),
+                ),
+              ],
             ),
             actions: [
               TextButton(
