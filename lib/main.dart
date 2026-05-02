@@ -20,7 +20,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Frictionless Media',
+      title: 'YouTube Audio Downloader',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.dark,
@@ -244,7 +244,7 @@ class _DownloadOverlayState extends State<DownloadOverlay> with SingleTickerProv
                   },
                 ),
                 const SizedBox(width: 12),
-                const Text("Saved Successfully!", style: TextStyle(color: Colors.white)),
+                const Expanded(child: Text("Saved Successfully!", style: TextStyle(color: Colors.white))),
               ],
             ),
             content: Column(
@@ -294,61 +294,28 @@ class _DownloadOverlayState extends State<DownloadOverlay> with SingleTickerProv
     }
   }
 
-  bool _isUpdating = false;
-
-  Future<void> _updateEngine() async {
-    setState(() {
-      _isUpdating = true;
-      _statusMessage = "Updating Download Engine...";
-    });
-    try {
-      final status = await platform.invokeMethod('update');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Engine Updated: $status"), backgroundColor: Colors.green));
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Update Failed: ${e.toString()}"), backgroundColor: Colors.redAccent));
-      }
-    } finally {
-      setState(() {
-        _isUpdating = false;
-        _statusMessage = "Waiting for URL...";
-      });
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF0F0F1A),
       appBar: AppBar(
-        title: const Text("Frictionless Media", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+        title: const Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text("YouTube Audio Downloader", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 16)),
+            Text("by Durgesh Mahajan", style: TextStyle(color: Colors.white70, fontSize: 12)),
+          ],
+        ),
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
-        actions: [
-          if (_isUpdating)
-            const Padding(
-              padding: EdgeInsets.all(16.0),
-              child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
-            )
-          else
-            IconButton(
-              icon: const Icon(Icons.system_update),
-              tooltip: 'Update Download Engine',
-              onPressed: _updateEngine,
-            )
-        ],
       ),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(16.0),
           child: Column(
             children: [
-              if (_isUpdating)
-                _buildProcessing()
-              else if (_sharedText == null)
+              if (_sharedText == null)
                 _buildManualInput()
               else if (_isLoadingInfo)
                 _buildLoader()
@@ -479,7 +446,7 @@ class _DownloadOverlayState extends State<DownloadOverlay> with SingleTickerProv
                       fontWeight: FontWeight.bold,
                       height: 1.2,
                     ),
-                    maxLines: 2,
+                    maxLines: 4,
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
@@ -543,6 +510,7 @@ class _DownloadOverlayState extends State<DownloadOverlay> with SingleTickerProv
           const SizedBox(height: 16),
           const Text(
             "Paste a link to download",
+            textAlign: TextAlign.center,
             style: TextStyle(
               color: Colors.white,
               fontSize: 18,

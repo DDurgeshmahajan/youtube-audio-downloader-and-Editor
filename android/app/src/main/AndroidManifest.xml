@@ -6,11 +6,11 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     
     <application
-        android:label="ytdownloader"
+        android:label="YT Audio Downloader"
         android:name="${applicationName}"
         android:requestLegacyExternalStorage="true"
         android:extractNativeLibs="true"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/launcher_icon">
         <activity
             android:name=".MainActivity"
             android:exported="true"
