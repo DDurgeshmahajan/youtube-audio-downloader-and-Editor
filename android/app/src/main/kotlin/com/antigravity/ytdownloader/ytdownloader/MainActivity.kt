@@ -15,8 +15,12 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import com.yausername.ffmpeg.FFmpeg
 
+import io.flutter.plugin.common.EventChannel
+
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.ytdownloader/ytdl"
+    private val PROGRESS_CHANNEL = "com.ytdownloader/progress"
+    private var eventSink: EventChannel.EventSink? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -30,6 +34,19 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, PROGRESS_CHANNEL).setStreamHandler(
+            object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    eventSink = events
+                }
+
+                override fun onCancel(arguments: Any?) {
+                    eventSink = null
+                }
+            }
+        )
+
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
                 "getFormats" -> {
@@ -56,8 +73,8 @@ class MainActivity : FlutterActivity() {
                 "download" -> {
                     val url = call.argument<String>("url")
                     val format = call.argument<String>("format")
-                    val outputPath = call.argument<String>("outputPath")
-                    if (url != null && outputPath != null) {
+                    val title = call.argument<String>("title") ?: "Media_${System.currentTimeMillis()}"
+                    if (url != null) {
                         CoroutineScope(Dispatchers.IO).launch {
                             try {
                                 val request = YoutubeDLRequest(url)
@@ -72,10 +89,21 @@ class MainActivity : FlutterActivity() {
                                     request.addOption("--audio-format", "mp3")
                                     request.addOption("--audio-quality", "0")
                                 }
-                                request.addOption("-o", outputPath)
+                                
+                                val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                                val extension = if (extractAudio) "mp3" else "mp4"
+                                val outputFile = File(downloadsDir, "$title.$extension")
+                                request.addOption("-o", outputFile.absolutePath)
                                 
                                 YoutubeDL.getInstance().execute(request) { progress, etaInSeconds, line ->
-                                    // Could send progress via EventChannel if needed
+                                    CoroutineScope(Dispatchers.Main).launch {
+                                        val data = mapOf(
+                                            "progress" to progress,
+                                            "eta" to etaInSeconds,
+                                            "line" to line
+                                        )
+                                        eventSink?.success(data)
+                                    }
                                 }
                                 withContext(Dispatchers.Main) {
                                     result.success("Success")
@@ -83,6 +111,7 @@ class MainActivity : FlutterActivity() {
                             } catch (e: Exception) {
                                 withContext(Dispatchers.Main) {
                                     result.error("ERROR", e.message, null)
+                                    eventSink?.success("Error: ${e.message}")
                                 }
                             }
                         }

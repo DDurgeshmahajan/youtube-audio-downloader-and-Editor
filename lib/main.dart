@@ -59,6 +59,11 @@ class _DownloadOverlayState extends State<DownloadOverlay> with SingleTickerProv
   late TabController _tabController;
 
   static const platform = MethodChannel('com.ytdownloader/ytdl');
+  static const progressChannel = EventChannel('com.ytdownloader/progress');
+  
+  StreamSubscription? _progressSubscription;
+  double _downloadProgress = 0.0;
+  String _etaMessage = "";
 
   @override
   void initState() {
@@ -77,6 +82,34 @@ class _DownloadOverlayState extends State<DownloadOverlay> with SingleTickerProv
     ReceiveSharingIntent.instance.getInitialMedia().then((List<SharedMediaFile> value) {
       if (value.isNotEmpty) {
         _handleIncomingUrl(value.first.path);
+      }
+    });
+
+    _progressSubscription = progressChannel.receiveBroadcastStream().listen((event) {
+      if (event is Map) {
+        setState(() {
+          _downloadProgress = (event['progress'] as num?)?.toDouble() ?? 0.0;
+          _etaMessage = event['eta']?.toString() ?? "";
+          if (_downloadProgress > 0 && _statusMessage != "Saved to Downloads!") {
+            _statusMessage = "Downloading... ${_downloadProgress.toStringAsFixed(1)}%";
+          }
+        });
+      } else if (event is String) {
+        setState(() {
+          if (event.startsWith("Error")) {
+            _statusMessage = event;
+            _isProcessing = false;
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(event),
+                  backgroundColor: Colors.redAccent,
+                  duration: const Duration(seconds: 5),
+                ),
+              );
+            }
+          }
+        });
       }
     });
   }
@@ -140,6 +173,7 @@ class _DownloadOverlayState extends State<DownloadOverlay> with SingleTickerProv
   void dispose() {
     _urlController.dispose();
     _intentDataStreamSubscription.cancel();
+    _progressSubscription?.cancel();
     _tabController.dispose();
     super.dispose();
   }
@@ -149,27 +183,22 @@ class _DownloadOverlayState extends State<DownloadOverlay> with SingleTickerProv
 
     setState(() {
       _isProcessing = true;
+      _downloadProgress = 0.0;
+      _etaMessage = "";
       _statusMessage = isAudio ? "Extracting Audio..." : "Downloading Media...";
     });
 
     try {
-      final String extension = isAudio ? 'mp3' : 'mp4';
-      Directory? downloadsDirectory;
-      if (Platform.isAndroid) {
-        downloadsDirectory = Directory('/storage/emulated/0/Download');
-      } else {
-        downloadsDirectory = await getDownloadsDirectory();
-      }
-      
       final String cleanTitle = (_videoTitle ?? "Media").replaceAll(RegExp(r'[^\w\s]+'), '').trim().replaceAll(' ', '_');
-      final String fileName = "\${cleanTitle}_\${DateTime.now().millisecondsSinceEpoch}.$extension";
-      final String outputPath = "\${downloadsDirectory!.path}/$fileName";
+      final String extension = isAudio ? 'mp3' : 'mp4';
+      final String fallbackPath = "/storage/emulated/0/Download/${cleanTitle}_${DateTime.now().millisecondsSinceEpoch}.$extension";
 
       await platform.invokeMethod('download', {
         'url': _sharedText,
         'format': formatCode,
         'extractAudio': isAudio,
-        'outputPath': outputPath,
+        'title': cleanTitle,
+        'outputPath': fallbackPath,
       });
 
       setState(() {
@@ -177,75 +206,46 @@ class _DownloadOverlayState extends State<DownloadOverlay> with SingleTickerProv
         _isProcessing = false;
       });
       
-      Future.delayed(const Duration(seconds: 2), () {
-        SystemNavigator.pop();
-      });
-
     } catch (e) {
       setState(() {
-        _statusMessage = "Error: \${e.toString()}";
         _isProcessing = false;
       });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Error: ${e.toString()}"),
+            backgroundColor: Colors.redAccent,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black.withOpacity(0.4),
-      body: Align(
-        alignment: Alignment.bottomCenter,
-        child: Container(
-          constraints: const BoxConstraints(maxHeight: 600),
-          decoration: BoxDecoration(
-            color: const Color(0xFF161621).withOpacity(0.95),
-            borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(28),
-              topRight: Radius.circular(28),
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.5),
-                blurRadius: 20,
-                spreadRadius: 5,
-              )
+      backgroundColor: const Color(0xFF0F0F1A),
+      appBar: AppBar(
+        title: const Text("Frictionless Media", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        centerTitle: true,
+      ),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            children: [
+              if (_sharedText == null)
+                _buildManualInput()
+              else if (_isLoadingInfo)
+                _buildLoader()
+              else if (_isProcessing)
+                _buildProcessing()
+              else
+                _buildMediaUI(),
             ],
-          ),
-          child: ClipRRect(
-            borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(28),
-              topRight: Radius.circular(28),
-            ),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-              child: Padding(
-                padding: const EdgeInsets.only(top: 12.0),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Handle Bar
-                    Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.3),
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    
-                    if (_sharedText == null)
-                      _buildManualInput()
-                    else if (_isLoadingInfo)
-                      _buildLoader()
-                    else if (_isProcessing)
-                      _buildProcessing()
-                    else
-                      _buildMediaUI(),
-                  ],
-                ),
-              ),
-            ),
           ),
         ),
       ),
@@ -274,39 +274,58 @@ class _DownloadOverlayState extends State<DownloadOverlay> with SingleTickerProv
   }
 
   Widget _buildProcessing() {
-    return Padding(
-      padding: const EdgeInsets.all(40.0),
-      child: Column(
-        children: [
-          Stack(
-            alignment: Alignment.center,
+    return Expanded(
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(40.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const SizedBox(
-                width: 60,
-                height: 60,
-                child: CircularProgressIndicator(
-                  color: Colors.greenAccent,
-                  strokeWidth: 3,
-                ),
+              Stack(
+                alignment: Alignment.center,
+                children: [
+                  SizedBox(
+                    width: 80,
+                    height: 80,
+                    child: CircularProgressIndicator(
+                      value: _downloadProgress > 0 ? _downloadProgress / 100 : null,
+                      color: Colors.greenAccent,
+                      strokeWidth: 4,
+                    ),
+                  ),
+                  if (_downloadProgress > 0)
+                    Text(
+                      "${_downloadProgress.toInt()}%",
+                      style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold),
+                    )
+                  else
+                    Icon(Icons.download_rounded, color: Colors.greenAccent.withOpacity(0.8), size: 28),
+                ],
               ),
-              Icon(Icons.download_rounded, color: Colors.greenAccent.withOpacity(0.8), size: 28),
+              const SizedBox(height: 24),
+              Text(
+                _statusMessage,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              if (_etaMessage.isNotEmpty && _etaMessage != "null" && _downloadProgress < 100)
+                Text(
+                  "ETA: $_etaMessage seconds",
+                  style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 14),
+                )
+              else
+                const Text(
+                  "This may take a moment based on file size.",
+                  style: TextStyle(color: Colors.white54, fontSize: 12),
+                )
             ],
           ),
-          const SizedBox(height: 24),
-          Text(
-            _statusMessage,
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            "This may take a moment based on file size.",
-            style: TextStyle(color: Colors.white54, fontSize: 12),
-          )
-        ],
+        ),
       ),
     );
   }
@@ -486,10 +505,10 @@ class _DownloadOverlayState extends State<DownloadOverlay> with SingleTickerProv
       itemBuilder: (context, index) {
         final height = _availableVideoHeights[index];
         final bool isHD = height >= 720;
-        final formatCode = "bestvideo[height<=\$height]+bestaudio/best[height<=\$height]";
+        final formatCode = "bestvideo[height<=$height]+bestaudio/best[height<=$height]";
         
         return _OptionCard(
-          title: "\${height}p",
+          title: "${height}p",
           subtitle: isHD ? "High Definition" : "Standard Quality",
           icon: isHD ? Icons.hd : Icons.sd,
           color: isHD ? Colors.blueAccent : Colors.white60,

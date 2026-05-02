@@ -9,6 +9,7 @@
         android:label="ytdownloader"
         android:name="${applicationName}"
         android:requestLegacyExternalStorage="true"
+        android:extractNativeLibs="true"
         android:icon="@mipmap/ic_launcher">
         <activity
             android:name=".MainActivity"
