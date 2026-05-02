@@ -105,8 +105,16 @@ class MainActivity : FlutterActivity() {
                                         eventSink?.success(data)
                                     }
                                 }
+                                
+                                android.media.MediaScannerConnection.scanFile(
+                                    applicationContext,
+                                    arrayOf(outputFile.absolutePath),
+                                    arrayOf(if (extractAudio) "audio/mpeg" else "video/mp4"),
+                                    null
+                                )
+
                                 withContext(Dispatchers.Main) {
-                                    result.success("Success")
+                                    result.success(outputFile.absolutePath)
                                 }
                             } catch (e: Exception) {
                                 withContext(Dispatchers.Main) {
@@ -117,6 +125,20 @@ class MainActivity : FlutterActivity() {
                         }
                     } else {
                         result.error("INVALID_ARGS", "URL and Output Path are required", null)
+                    }
+                }
+                "update" -> {
+                    CoroutineScope(Dispatchers.IO).launch {
+                        try {
+                            val status = YoutubeDL.getInstance().updateYoutubeDL(applicationContext, YoutubeDL.UpdateChannel.STABLE)
+                            withContext(Dispatchers.Main) {
+                                result.success(status?.toString() ?: "Updated successfully")
+                            }
+                        } catch (e: Exception) {
+                            withContext(Dispatchers.Main) {
+                                result.error("ERROR", e.message, null)
+                            }
+                        }
                     }
                 }
                 else -> {

@@ -64,6 +64,7 @@ class _DownloadOverlayState extends State<DownloadOverlay> with SingleTickerProv
   StreamSubscription? _progressSubscription;
   double _downloadProgress = 0.0;
   String _etaMessage = "";
+  bool _hasCheckedForUpdates = false;
 
   @override
   void initState() {
@@ -181,6 +182,21 @@ class _DownloadOverlayState extends State<DownloadOverlay> with SingleTickerProv
   Future<void> _download(String formatCode, bool isAudio) async {
     if (_sharedText == null || _sharedText!.isEmpty) return;
 
+    if (!_hasCheckedForUpdates) {
+      setState(() {
+        _isProcessing = true;
+        _downloadProgress = 0.0;
+        _etaMessage = "";
+        _statusMessage = "Ensuring engine is up-to-date...";
+      });
+      try {
+        await platform.invokeMethod('update');
+      } catch (e) {
+        // Ignore update failure, continue to download
+      }
+      _hasCheckedForUpdates = true;
+    }
+
     setState(() {
       _isProcessing = true;
       _downloadProgress = 0.0;
@@ -193,7 +209,7 @@ class _DownloadOverlayState extends State<DownloadOverlay> with SingleTickerProv
       final String extension = isAudio ? 'mp3' : 'mp4';
       final String fallbackPath = "/storage/emulated/0/Download/${cleanTitle}_${DateTime.now().millisecondsSinceEpoch}.$extension";
 
-      await platform.invokeMethod('download', {
+      final String? savedPath = await platform.invokeMethod('download', {
         'url': _sharedText,
         'format': formatCode,
         'extractAudio': isAudio,
@@ -202,10 +218,38 @@ class _DownloadOverlayState extends State<DownloadOverlay> with SingleTickerProv
       });
 
       setState(() {
-        _statusMessage = "Saved to Downloads!";
         _isProcessing = false;
+        _statusMessage = "Waiting for URL...";
+        _sharedText = null;
+        _urlController.clear();
       });
-      
+
+      if (mounted && savedPath != null) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            backgroundColor: const Color(0xFF1E1E2C),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: const Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.greenAccent, size: 28),
+                SizedBox(width: 12),
+                Text("Saved Successfully!", style: TextStyle(color: Colors.white)),
+              ],
+            ),
+            content: Text(
+              "Your file has been saved to your gallery and downloads folder.\n\nPath:\n$savedPath",
+              style: const TextStyle(color: Colors.white70),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text("Awesome!", style: TextStyle(color: Colors.deepPurpleAccent, fontSize: 16, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        );
+      }
     } catch (e) {
       setState(() {
         _isProcessing = false;
@@ -222,6 +266,30 @@ class _DownloadOverlayState extends State<DownloadOverlay> with SingleTickerProv
     }
   }
 
+  bool _isUpdating = false;
+
+  Future<void> _updateEngine() async {
+    setState(() {
+      _isUpdating = true;
+      _statusMessage = "Updating Download Engine...";
+    });
+    try {
+      final status = await platform.invokeMethod('update');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Engine Updated: $status"), backgroundColor: Colors.green));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Update Failed: ${e.toString()}"), backgroundColor: Colors.redAccent));
+      }
+    } finally {
+      setState(() {
+        _isUpdating = false;
+        _statusMessage = "Waiting for URL...";
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -231,13 +299,28 @@ class _DownloadOverlayState extends State<DownloadOverlay> with SingleTickerProv
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
+        actions: [
+          if (_isUpdating)
+            const Padding(
+              padding: EdgeInsets.all(16.0),
+              child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+            )
+          else
+            IconButton(
+              icon: const Icon(Icons.system_update),
+              tooltip: 'Update Download Engine',
+              onPressed: _updateEngine,
+            )
+        ],
       ),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(16.0),
           child: Column(
             children: [
-              if (_sharedText == null)
+              if (_isUpdating)
+                _buildProcessing()
+              else if (_sharedText == null)
                 _buildManualInput()
               else if (_isLoadingInfo)
                 _buildLoader()
@@ -445,6 +528,8 @@ class _DownloadOverlayState extends State<DownloadOverlay> with SingleTickerProv
                 child: TextField(
                   controller: _urlController,
                   style: const TextStyle(color: Colors.white),
+                  minLines: 1,
+                  maxLines: 4,
                   decoration: InputDecoration(
                     hintText: "https://youtube.com/watch?v=...",
                     hintStyle: TextStyle(color: Colors.white.withOpacity(0.4)),
